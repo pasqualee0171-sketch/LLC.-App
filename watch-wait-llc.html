@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Watch & Wait" />
+  <title>Watch & Wait — LLC</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { background: #f0f4f8; font-family: Georgia, Palatino, serif; }
+    #root { max-width: 480px; margin: 0 auto; min-height: 100vh; }
+    input, textarea, button { font-family: Georgia, Palatino, serif; }
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const SYMPTOMS = [
+  { id: "fever", icon: "🌡️", label: "Febbre", sublabel: "sudorazioni, brividi", alarm: "Febbre persistente", action: "Chiama il medico", actionLevel: "urgent", threshold: "Temperatura > 37.5°C" },
+  { id: "weight_s", icon: "⚖️", label: "Calo peso", sublabel: "perdita rapida", alarm: "Perdita > 2–3 kg/mese", action: "Chiama il medico", actionLevel: "urgent", threshold: "Inserisci il tuo peso" },
+  { id: "lymphnodes", icon: "🔵", label: "Linfonodi ingrossati", sublabel: "gonfiori, dolore", alarm: "Crescita o dolore", action: "Controllo medico", actionLevel: "warning", threshold: "Nota variazioni rispetto a ieri" },
+  { id: "abdomen", icon: "🫁", label: "Dolore milza/addome", sublabel: "pressione, gonfiore", alarm: "Dolore o senso di pressione", action: "Valutazione urgente", actionLevel: "critical", threshold: "Qualsiasi dolore addominale" },
+  { id: "fatigue", icon: "⚡", label: "Stanchezza intensa", sublabel: "debolezza improvvisa", alarm: "Stanchezza improvvisa, debolezza", action: "Avvisa il medico", actionLevel: "warning", threshold: "Molto più stanco del solito" },
+];
+
+const PERIODIC = [
+  { id: "vitd", icon: "💊", label: "Vitamina D", sublabel: "Dose personalizzata", alarm: "Nausea, sete intensa", action: "Controllo calcio e reni", frequency: "Mensile" },
+  { id: "pressure", icon: "💓", label: "Pressione arteriosa", sublabel: "monitoraggio settimanale", alarm: "Pressione alterata", action: "Monitora settimanale", frequency: "Settimanale" },
+  { id: "bloodtest", icon: "🩸", label: "Esami Emocromo", sublabel: "ogni 3–6 mesi", alarm: "Valori fuori range", action: "Consulta oncologo", frequency: "3–6 mesi" },
+];
+
+const COLORS = {
+  critical: { bg: "#fff0f0", border: "#e74c3c", badge: "#e74c3c", text: "#c0392b" },
+  urgent:   { bg: "#fff5f0", border: "#e67e22", badge: "#e67e22", text: "#d35400" },
+  warning:  { bg: "#fffbf0", border: "#f39c12", badge: "#f39c12", text: "#e67e22" },
+};
+
+function todayStr() { return new Date().toISOString().split("T")[0]; }
+function fmtDate(d) { return new Date(d).toLocaleDateString("it-IT", { weekday:"short", day:"2-digit", month:"short" }); }
+
+function App() {
+  const [tab, setTab] = useState("today");
+  const [checks, setChecks] = useState({});
+  const [weight, setWeight] = useState("");
+  const [pressure, setPressure] = useState("");
+  const [note, setNote] = useState("");
+  const [diary, setDiary] = useState([]);
+  const [modal, setModal] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    try {
+      setDiary(JSON.parse(localStorage.getItem("llc_diary") || "[]"));
+      setWeight(localStorage.getItem("llc_weight") || "");
+      setPressure(localStorage.getItem("llc_pressure") || "");
+    } catch(e) {}
+  }, []);
+
+  const toggle = (id) => setChecks(c => ({ ...c, [id]: !c[id] }));
+
+  const saveDay = () => {
+    const entry = { date: todayStr(), checks: {...checks}, weight, pressure, note };
+    const updated = [entry, ...diary.filter(d => d.date !== todayStr())].slice(0, 90);
+    setDiary(updated);
+    try {
+      localStorage.setItem("llc_diary", JSON.stringify(updated));
+      localStorage.setItem("llc_weight", weight);
+      localStorage.setItem("llc_pressure", pressure);
+    } catch(e) {}
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const alarms = SYMPTOMS.filter(s => checks[s.id]);
+
+  return (
+    <div style={{fontFamily:"Georgia,serif", background:"#f0f4f8", minHeight:"100vh"}}>
+
+      {/* HEADER */}
+      <div style={{background:"linear-gradient(135deg,#1a5276,#2e86c1)", color:"#fff", padding:"env(safe-area-inset-top,0) 0 0"}}>
+        <div style={{display:"flex", alignItems:"center", gap:12, padding:"18px 18px 16px"}}>
+          <span style={{fontSize:34}}>🩺</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:21, fontWeight:"bold", letterSpacing:0.5}}>Watch & Wait</div>
+            <div style={{fontSize:12, opacity:0.8, fontStyle:"italic"}}>Monitoraggio LLC · {new Date().toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"})}</div>
+          </div>
+        </div>
+        {alarms.length > 0 && (
+          <div style={{background:"#e74c3c", textAlign:"center", padding:"8px", fontSize:13, fontWeight:"bold"}}>
+            ⚠️ {alarms.length} segnale{alarms.length>1?"i":""} d'allarme attivo
+          </div>
+        )}
+        {/* TABS */}
+        <div style={{display:"flex", borderTop:"1px solid rgba(255,255,255,0.2)"}}>
+          {[["today","📋 Oggi"],["periodic","📅 Periodici"],["diary","📓 Diario"]].map(([id,lbl]) => (
+            <button key={id} onClick={()=>setTab(id)} style={{flex:1, padding:"11px 4px", border:"none", background:"none", color: tab===id?"#fff":"rgba(255,255,255,0.6)", fontWeight: tab===id?"bold":"normal", fontSize:13, cursor:"pointer", borderBottom: tab===id?"3px solid #fff":"3px solid transparent", fontFamily:"Georgia,serif"}}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{padding:"14px 14px 80px"}}>
+
+        {/* ── OGGI ── */}
+        {tab==="today" && <>
+          <div style={{fontSize:11, fontWeight:"bold", color:"#7f8c8d", letterSpacing:1.5, margin:"6px 0 10px"}}>SINTOMI QUOTIDIANI</div>
+
+          {SYMPTOMS.map(s => {
+            const on = !!checks[s.id];
+            const col = on ? COLORS[s.actionLevel] : null;
+            return (
+              <div key={s.id} style={{background: on?col.bg:"#fff", border:`1.5px solid ${on?col.border:"#dce8f5"}`, borderRadius:12, padding:14, marginBottom:10, transition:"all 0.25s"}}>
+                <div style={{display:"flex", alignItems:"center", gap:12}}>
+                  <span style={{fontSize:26}}>{s.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"bold", fontSize:15, color:"#1a5276"}}>{s.label}</div>
+                    <div style={{fontSize:12, color:"#7f8c8d"}}>{s.sublabel}</div>
+                  </div>
+                  <button onClick={()=>toggle(s.id)} style={{width:38, height:38, borderRadius:"50%", border:`2px solid ${on?col.border:"#bdc3c7"}`, background: on?col.border:"#f5f5f5", color:"#fff", fontSize:18, fontWeight:"bold", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center"}}>
+                    {on?"✓":"○"}
+                  </button>
+                </div>
+                {on && (
+                  <div style={{marginTop:10, paddingTop:10, borderTop:"1px dashed #ddd"}}>
+                    <div style={{display:"flex", flexWrap:"wrap", gap:8, alignItems:"center"}}>
+                      <span style={{background:col.badge, color:"#fff", borderRadius:20, padding:"4px 10px", fontSize:12, fontWeight:"bold"}}>⚠️ {s.alarm}</span>
+                      <span style={{fontSize:13, fontWeight:"bold", color:col.text}}>→ {s.action}</span>
+                      <button onClick={()=>setModal(s)} style={{marginLeft:"auto", background:"none", border:"1px solid #ccc", borderRadius:8, padding:"4px 10px", fontSize:12, cursor:"pointer", color:"#555", fontFamily:"Georgia,serif"}}>
+                        Dettagli
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div style={{fontSize:11, fontWeight:"bold", color:"#7f8c8d", letterSpacing:1.5, margin:"14px 0 10px"}}>MISURAZIONI</div>
+          <div style={{display:"flex", gap:10, marginBottom:10}}>
+            {[["weight","⚖️ Peso (kg)","es. 72.5","number",setWeight,weight],
+              ["pressure","💓 Pressione","es. 120/80","text",setPressure,pressure]].map(([id,lbl,ph,type,fn,val])=>(
+              <div key={id} style={{flex:1, background:"#fff", borderRadius:12, padding:12, border:"1.5px solid #dce8f5"}}>
+                <div style={{fontSize:12, color:"#7f8c8d", fontWeight:"bold", marginBottom:6}}>{lbl}</div>
+                <input type={type} placeholder={ph} value={val} onChange={e=>fn(e.target.value)}
+                  style={{width:"100%", border:"1px solid #ddd", borderRadius:8, padding:"8px 10px", fontSize:15, outline:"none"}} />
+              </div>
+            ))}
+          </div>
+
+          <div style={{background:"#fff", borderRadius:12, padding:12, marginBottom:14, border:"1.5px solid #dce8f5"}}>
+            <div style={{fontSize:12, color:"#7f8c8d", fontWeight:"bold", marginBottom:6}}>📝 Note del giorno</div>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Come ti senti oggi? Qualcosa di insolito?"
+              style={{width:"100%", border:"1px solid #ddd", borderRadius:8, padding:"8px 10px", fontSize:14, minHeight:72, resize:"vertical", outline:"none"}} />
+          </div>
+
+          <button onClick={saveDay} style={{width:"100%", background: saved?"#27ae60":"#2e86c1", color:"#fff", border:"none", borderRadius:12, padding:14, fontSize:16, fontWeight:"bold", cursor:"pointer", transition:"all 0.3s"}}>
+            {saved ? "✓ Salvato!" : "💾 Salva controllo di oggi"}
+          </button>
+        </>}
+
+        {/* ── PERIODICI ── */}
+        {tab==="periodic" && <>
+          <div style={{fontSize:11, fontWeight:"bold", color:"#7f8c8d", letterSpacing:1.5, margin:"6px 0 10px"}}>CHECK PERIODICI</div>
+          {PERIODIC.map(p => (
+            <div key={p.id} style={{background:"#fff", borderRadius:12, padding:14, marginBottom:10, border:"1.5px solid #dce8f5"}}>
+              <div style={{display:"flex", alignItems:"center", gap:12}}>
+                <span style={{fontSize:28}}>{p.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:"bold", fontSize:15, color:"#1a5276"}}>{p.label}</div>
+                  <div style={{fontSize:12, color:"#7f8c8d"}}>{p.sublabel}</div>
+                </div>
+                <span style={{background:"#2e86c1", color:"#fff", borderRadius:20, padding:"4px 10px", fontSize:11, fontWeight:"bold"}}>{p.frequency}</span>
+              </div>
+              <div style={{marginTop:10, fontSize:13, color:"#888"}}>⚠️ Segnale: <strong style={{color:"#555"}}>{p.alarm}</strong></div>
+              <div style={{fontSize:13, color:"#2e86c1", fontWeight:"bold", marginTop:4}}>→ {p.action}</div>
+            </div>
+          ))}
+
+          <div style={{background:"#eaf4fb", borderRadius:12, padding:16, marginTop:4, border:"1.5px solid #aed6f1"}}>
+            <div style={{fontWeight:"bold", color:"#1a5276", marginBottom:10, fontSize:14}}>📌 Promemoria fissi</div>
+            {[["📓","Diario Sintomi e Peso","ogni giorno"],["🩸","Esami Emocromo","ogni 3–6 mesi"],["💊","Vitamina D","dose prescritta dal medico"]].map(([ic,lbl,freq])=>(
+              <div key={lbl} style={{display:"flex", gap:8, marginBottom:8, alignItems:"flex-start"}}>
+                <span style={{fontSize:18}}>{ic}</span>
+                <div style={{fontSize:14}}><strong>{lbl}</strong> <span style={{color:"#7f8c8d", fontSize:12}}>— {freq}</span></div>
+              </div>
+            ))}
+          </div>
+        </>}
+
+        {/* ── DIARIO ── */}
+        {tab==="diary" && <>
+          <div style={{fontSize:11, fontWeight:"bold", color:"#7f8c8d", letterSpacing:1.5, margin:"6px 0 10px"}}>STORICO CONTROLLI</div>
+          {diary.length===0 ? (
+            <div style={{textAlign:"center", padding:"50px 20px", color:"#aaa"}}>
+              <div style={{fontSize:48, marginBottom:12}}>📓</div>
+              <div style={{fontSize:15}}>Nessun controllo registrato.</div>
+              <div style={{fontSize:13, marginTop:4}}>Vai su "Oggi" per iniziare!</div>
+            </div>
+          ) : diary.map(entry => {
+            const active = SYMPTOMS.filter(s => entry.checks?.[s.id]);
+            return (
+              <div key={entry.date} style={{background:"#fff", borderRadius:12, padding:14, marginBottom:10, border:"1.5px solid #dce8f5"}}>
+                <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6}}>
+                  <strong style={{fontSize:14, color:"#1a5276"}}>{fmtDate(entry.date)}</strong>
+                  {active.length===0
+                    ? <span style={{background:"#27ae60", color:"#fff", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:"bold"}}>✓ OK</span>
+                    : <span style={{background:"#e74c3c", color:"#fff", borderRadius:20, padding:"3px 10px", fontSize:12, fontWeight:"bold"}}>⚠️ {active.length} sintomo{active.length>1?"i":""}</span>
+                  }
+                </div>
+                {(entry.weight||entry.pressure) && (
+                  <div style={{display:"flex", gap:14, fontSize:13, color:"#555", marginBottom:6}}>
+                    {entry.weight && <span>⚖️ {entry.weight} kg</span>}
+                    {entry.pressure && <span>💓 {entry.pressure}</span>}
+                  </div>
+                )}
+                {active.length>0 && (
+                  <div style={{display:"flex", flexWrap:"wrap", gap:6, marginBottom:6}}>
+                    {active.map(s=>(
+                      <span key={s.id} style={{background:"#fff0f0", border:"1px solid #e74c3c", borderRadius:20, padding:"2px 8px", fontSize:12, color:"#c0392b"}}>
+                        {s.icon} {s.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {entry.note && <div style={{fontSize:13, color:"#777", fontStyle:"italic"}}>"{entry.note}"</div>}
+              </div>
+            );
+          })}
+        </>}
+      </div>
+
+      {/* MODAL */}
+      {modal && (
+        <div onClick={()=>setModal(null)} style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100, padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff", borderRadius:16, padding:24, maxWidth:340, width:"100%", textAlign:"center"}}>
+            <div style={{fontSize:48, marginBottom:8}}>{modal.icon}</div>
+            <div style={{fontSize:20, fontWeight:"bold", color:"#1a5276", marginBottom:16}}>{modal.label}</div>
+            {[["Segnale d'allarme", modal.alarm],["Soglia di attenzione", modal.threshold],["Azione consigliata", modal.action]].map(([k,v])=>(
+              <div key={k} style={{textAlign:"left", background:"#f8f9fa", borderRadius:8, padding:12, marginBottom:10}}>
+                <div style={{fontSize:11, color:"#7f8c8d", fontWeight:"bold", letterSpacing:1, marginBottom:4}}>{k.toUpperCase()}</div>
+                <div style={{fontSize:14, color:"#333"}}>{v}</div>
+              </div>
+            ))}
+            <div style={{background: COLORS[modal.actionLevel].badge, color:"#fff", borderRadius:12, padding:"12px", fontSize:15, fontWeight:"bold", margin:"4px 0 14px"}}>
+              → {modal.action}
+            </div>
+            <button onClick={()=>setModal(null)} style={{background:"#ecf0f1", border:"none", borderRadius:8, padding:"10px 28px", cursor:"pointer", fontSize:14, fontFamily:"Georgia,serif", color:"#555"}}>
+              Chiudi
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
